@@ -68,7 +68,7 @@ jobs:
 
       # 9. Run Trivy container security scan (make sure to configure Trivy properly)
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@0.33.x
+        uses: aquasecurity/trivy-action@v0.22.0
         with:
           scan-type: 'filesystem'  # Change this if you're scanning images
           path: .  # Path to your code or dockerfile
