@@ -69,8 +69,11 @@ jobs:
           gitleaks_config: './gitleaks-config.json'  # Optional, remove this if not using custom config
 
       # 9. Run Trivy container security scan
-      - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@v0.33.0
+      - name: Run Trivy scan (filesystem)
+        uses: aquasecurity/trivy-action@0.33.1
         with:
-          scan-type: 'filesystem'  # Change this if you're scanning Docker images
-          path: .  # Path to your code or Dockerfile
+          scan-type: 'fs'         # correct value
+          scan-ref: '.'           # correct input name
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
