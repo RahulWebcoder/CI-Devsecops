@@ -44,4 +44,4 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate  # Ensure virtual environment is active
-          pytest tests/test_api.py  # Run the tests
+          PYTHONPATH=$(pwd) pytest tests/test_api.py  # Run the tests
