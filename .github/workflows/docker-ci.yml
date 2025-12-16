@@ -1,5 +1,5 @@
 
-name: Build → Scan → Push (Docker Hub)
+name: Build → Scan → Push (Docker Hub) + SARIF
 
 on:
   push:
@@ -11,9 +11,11 @@ on:
 
 permissions:
   contents: read
+  # Required for uploading SARIF to Code Scanning
+  security-events: write
 
 env:
-  DOCKER_REPO: fastapi-ci   # repo name portion, lowercase
+  DOCKER_REPO: fastapi-ci
 
 jobs:
   test:
@@ -53,35 +55,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Resolve the Docker namespace (username) safely:
-      # 1) Prefer secret DOCKERHUB_USERNAME if present
-      # 2) Else fallback to github.actor (lowercased)
+      # Resolve Docker namespace from secret (fallback to actor)
       - name: Compute Docker namespace and tags
         id: meta
         shell: bash
         env:
           SECRET_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-          # Pick username from secret if present, else fallback to actor
           if [ -n "$SECRET_USER" ]; then
             USER_NS="$SECRET_USER"
           else
             USER_NS="${{ github.actor }}"
           fi
-
-          # Normalize to lowercase
           USER_NS="$(echo "$USER_NS" | tr '[:upper:]' '[:lower:]')"
           REPO="$(echo "${{ env.DOCKER_REPO }}" | tr '[:upper:]' '[:lower:]')"
           IMAGE="docker.io/${USER_NS}/${REPO}"
           SHORT_SHA="$(echo "${{ github.sha }}" | cut -c1-12)"
-
-          # Output ONLY the values needed by later steps (no echo of secrets to logs)
           echo "user_ns=$USER_NS"        >> $GITHUB_OUTPUT
           echo "repo=$REPO"              >> $GITHUB_OUTPUT
           echo "image=$IMAGE"            >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA"    >> $GITHUB_OUTPUT
 
-      # Build and load locally for Trivy scan
+      # Build and load locally so Trivy can scan the image
       - name: Build image (local load)
         uses: docker/build-push-action@v6
         with:
@@ -94,7 +89,7 @@ jobs:
             fastapi-ci:local
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.short_sha }}
 
-      # Trivy IMAGE scan – fail on HIGH/CRITICAL
+      # Primary gate: fail if HIGH/CRITICAL
       - name: Trivy image scan (fail on HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@0.33.1
         with:
@@ -104,7 +99,26 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
 
-      # Login with Docker Hub PAT
+      # --- NEW: Generate SARIF (always) ---
+      # Even if the table scan failed, we still want a SARIF file for Code Scanning visibility.
+      - name: Trivy SARIF (generate)
+        if: ${{ always() }}
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: fastapi-ci:local
+          format: 'sarif'
+          output: 'trivy.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      # --- NEW: Upload SARIF to GitHub Code Scanning ---
+      - name: Upload SARIF to GitHub Code Scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+
+      # Login & push only if the main gate (table scan) succeeded
       - name: Login to Docker Hub
         if: ${{ success() }}
         uses: docker/login-action@v3
@@ -112,7 +126,6 @@ jobs:
           username: ${{ steps.meta.outputs.user_ns }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Push only if scan passed
       - name: Push image to Docker Hub
         if: ${{ success() }}
         uses: docker/build-push-action@v6
