@@ -1,0 +1,85 @@
+
+name: Build → Scan → Push (AWS ECR + OIDC)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write          # Required for OIDC
+  contents: read
+  security-events: write   # For SARIF upload (optional)
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  docker-build-scan-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Configure AWS credentials via OIDC
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActions_ECR_Push
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Login to ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build Docker image
+      - name: Build image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker build -t "$REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}" .
+
+      # Trivy scan (fail on HIGH/CRITICAL)
+      - name: Trivy image scan (gate)
+        id: trivy_gate
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # Generate SARIF for GitHub Code Scanning
+      - name: Trivy SARIF
+        if: always()
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          format: 'sarif'
+          output: 'trivy.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      # Upload SARIF to GitHub Code Scanning
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy.sarif
+
+      # Push only if Trivy gate passed
+      - name: Push to ECR
+        if: ${{ steps.trivy_gate.outcome == 'success' }}
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker push "$REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+
+      # Fail job if vulnerabilities found
+      - name: Fail if HIGH/CRITICAL found
+        if: ${{ steps.trivy_gate.outcome != 'success' }}
+        run: |
+          echo "Blocking push: Trivy found HIGH/CRITICAL issues."
