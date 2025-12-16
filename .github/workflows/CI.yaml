@@ -1,0 +1,47 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # You can also choose other runners, but we'll use ubuntu-latest here
+
+    steps:
+      # 1. Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      # 2. Set up Python with the desired version (3.10 in this case)
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      # 3. Cache pip dependencies to speed up builds
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip  # Path where pip stores cached dependencies
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}  # Cache key based on requirements.txt
+          restore-keys: |
+            ${{ runner.os }}-pip-  # Restore cache if exact key isn't found
+
+      # 4. Install dependencies from requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m venv .venv  # Create a virtual environment
+          . .venv/bin/activate   # Activate the environment
+          pip install -r requirements.txt  # Install dependencies
+
+      # 5. Run tests using pytest
+      - name: Run tests
+        run: |
+          . .venv/bin/activate  # Ensure virtual environment is active
+          pytest tests/test_api.py  # Run the tests
