@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.11, 3.12]  # Defining the matrix with 2 versions
+        python-version: [3.10, 3.11, 3.12]  # Matrix with 3 Python versions
 
     steps:
       - name: Checkout code
@@ -51,5 +51,5 @@ jobs:
       - name: Upload result as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: test result
+          name: test-result-${{ matrix.python-version }}  # Use Python version to differentiate the artifact names
           path: result.log
