@@ -53,22 +53,24 @@ jobs:
           name: test-results
           path: result.log
 
-      # 7. Run SonarQube analysis (SonarQube will use default or generic project settings)
+      # 7. Run SonarQube analysis (Hard-code SonarQube URL here)
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v7
         with:
-          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}  # Use the secret created earlier
-          sonar-host-url: 'http://your-sonarqube-instance:9000'  # Replace with your SonarQube instance URL
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}  # Use the token from GitHub Secrets
+          sonar-host-url: 'http://54.221.52.108:9000/'  # Replace this with your actual SonarQube instance URL
+          projectKey: 'your_project_key'  # Replace with your actual SonarQube project key
 
       # 8. Run GitLeaks scan for secrets in the code
       - name: Run GitLeaks scan
         uses: zricethezav/gitleaks-action@v1
         with:
-          gitleaks_config: ./gitleaks-config.json  # If you have a custom config, or you can leave this out for default settings
+          # If you have a custom gitleaks config, you can specify it here. Otherwise, it will use the default settings.
+          gitleaks_config: './gitleaks-config.json'  # Optional, remove this if not using custom config
 
-      # 9. Run Trivy container security scan (make sure to configure Trivy properly)
+      # 9. Run Trivy container security scan
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@v0.20.0
         with:
-          scan-type: 'filesystem'  # Change this if you're scanning images
-          path: .  # Path to your code or dockerfile
+          scan-type: 'filesystem'  # Change this if you're scanning Docker images
+          path: .  # Path to your code or Dockerfile
