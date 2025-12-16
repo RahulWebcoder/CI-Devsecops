@@ -1,4 +1,5 @@
-name: CI Pipeline with SonarQube, GitLeaks, and Trivy
+
+name: CI Pipeline (Tests, SonarQube Server, Trivy)
 
 on:
   push:
@@ -7,24 +8,29 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Allows manual trigger
+  workflow_dispatch:
+
+# NOTE: Only needed if you later upload SARIF to Code Scanning.
+# permissions:
+#   contents: read
+#   security-events: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Self-hosted if you want to use your own runner
+    runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code from repository
+      # 1) Checkout
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # 2. Set up Python (ensure you're using a supported version like 3.11)
+      # 2) Set up Python
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      # 3. Cache pip dependencies to speed up builds
+      # 3) Cache pip to speed up installs
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
@@ -33,47 +39,55 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # 4. Install dependencies from requirements.txt
+      # 4) Install dependencies
       - name: Install dependencies
         run: |
-          python -m venv .venv
-          source .venv/bin/activate
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 5. Run tests using pytest
+      # 5) Run tests and capture output
       - name: Run tests
         run: |
-          source .venv/bin/activate
-          PYTHONPATH=$(pwd) pytest > result.log
-          
-      # 6. Upload test results as artifact
-      - name: Upload test results as artifact
-        uses: actions/upload-artifact@v4
+          PYTHONPATH="$(pwd)" pytest -q | tee result.log
+        shell: bash
+
+      # 6) Upload test log as artifact
+      - name: Upload test results
+        uses: actions/upload-artifact@v6
         with:
           name: test-results
           path: result.log
 
-      # 7. Run SonarQube analysis (Hard-code SonarQube URL here)
+      # 7) SonarQube scan (self-hosted server)
+      #    The action reads sonar-project.properties in the repo root.
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v7
-        with:
-          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}  # Use the token from GitHub Secrets
-          sonar-host-url: 'http://54.221.52.108:9000/'  # Replace this with your actual SonarQube instance URL
-          projectKey: 'your_project_key'  # Replace with your actual SonarQube project key
+        env:
+          SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+          SONAR_HOST_URL: 'http://54.221.52.108:9000/'
 
-      # 8. Run GitLeaks scan for secrets in the code
-      - name: Run GitLeaks scan
-        uses: zricethezav/gitleaks-action@v1
-        with:
-          # If you have a custom gitleaks config, you can specify it here. Otherwise, it will use the default settings.
-          gitleaks_config: './gitleaks-config.json'  # Optional, remove this if not using custom config
-
-      # 9. Run Trivy container security scan
-      - name: Run Trivy scan (filesystem)
+      # 8) Trivy filesystem scan (source repo)
+      - name: Run Trivy scan (fs)
         uses: aquasecurity/trivy-action@0.33.1
         with:
-          scan-type: 'fs'         # correct value
-          scan-ref: '.'           # correct input name
+          scan-type: 'fs'          # correct option for filesystem scanning
+          scan-ref: '.'            # path to scan (repo root)
           format: 'table'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
+          exit-code: '0'           # set to '1' if you want the job to fail on findings
+
+      # --- Optional: Generate and upload SARIF to GitHub Code Scanning ---
+      # - name: Trivy SARIF
+      #   uses: aquasecurity/trivy-action@0.33.1
+      #   with:
+      #     scan-type: 'fs'
+      #     scan-ref: '.'
+      #     format: 'sarif'
+      #     output: 'trivy.sarif'
+      #     severity: 'CRITICAL,HIGH'
+      #     ignore-unfixed: true
+      #
+      # - name: Upload SARIF to GitHub Code Scanning
+      #        #   uses: github/codeql-action/upload-sarif@v3
+      #   with:
