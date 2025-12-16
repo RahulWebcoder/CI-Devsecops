@@ -64,7 +64,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
-          SONAR_HOST_URL: 'http://54.221.52.108:9000/'
+          SONAR_HOST_URL: 'http://3.236.15.76:9000/'
 
       # 8) Trivy filesystem scan (source repo)
       - name: Run Trivy scan (fs)
