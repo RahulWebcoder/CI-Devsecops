@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.10, 3.11]  # Ensure only supported versions here
+        python-version: [3.10, 3.11]  # Explicitly specify the matrix here
 
     steps:
       # 1. Checkout the code from the repository
