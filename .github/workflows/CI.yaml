@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI Pipeline with SonarQube, GitLeaks, and Trivy
 
 on:
   push:
@@ -7,28 +7,24 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual trigger
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.11, 3.12]  # Matrix with 3 Python versions
+    runs-on: ubuntu-latest  # Self-hosted if you want to use your own runner
 
     steps:
+      # 1. Checkout code from repository
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
+      # 2. Set up Python (ensure you're using a supported version like 3.11)
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: '3.11'
 
-      - name: Check Python version
-        run: |
-          python --version  # Print the Python version to verify
-
+      # 3. Cache pip dependencies to speed up builds
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
@@ -37,19 +33,42 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      # 4. Install dependencies from requirements.txt
       - name: Install dependencies
         run: |
           python -m venv .venv
           source .venv/bin/activate
           pip install -r requirements.txt
 
+      # 5. Run tests using pytest
       - name: Run tests
         run: |
           source .venv/bin/activate
-          PYTHONPATH=$(pwd) pytest tests/test_api.py > result.log
-
-      - name: Upload result as artifact
+          PYTHONPATH=$(pwd) pytest > result.log
+          
+      # 6. Upload test results as artifact
+      - name: Upload test results as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: test-result-${{ matrix.python-version }}  # Use Python version to differentiate the artifact names
+          name: test-results
           path: result.log
+
+      # 7. Run SonarQube analysis (SonarQube will use default or generic project settings)
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v7
+        with:
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}  # Use the secret created earlier
+          sonar-host-url: 'http://your-sonarqube-instance:9000'  # Replace with your SonarQube instance URL
+
+      # 8. Run GitLeaks scan for secrets in the code
+      - name: Run GitLeaks scan
+        uses: zricethezav/gitleaks-action@v1
+        with:
+          gitleaks_config: ./gitleaks-config.json  # If you have a custom config, or you can leave this out for default settings
+
+      # 9. Run Trivy container security scan (make sure to configure Trivy properly)
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.33.x
+        with:
+          scan-type: 'filesystem'  # Change this if you're scanning images
+          path: .  # Path to your code or dockerfile
