@@ -7,31 +7,28 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # Allows manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.11]  # Explicitly specify the matrix here
+        python-version: [3.10, 3.11]  # Defining the matrix with 2 versions
 
     steps:
-      # 1. Checkout the code from the repository
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # 2. Set up Python with the desired version
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
-      # 3. Verify Python version
-      - name: Verify Python version
-        run: python --version  # Debugging step
+      - name: Check Python version
+        run: |
+          python --version  # Print the Python version to verify
 
-      # 4. Cache pip dependencies to speed up builds
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
@@ -40,22 +37,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # 5. Install dependencies from requirements.txt
       - name: Install dependencies
         run: |
           python -m venv .venv
           source .venv/bin/activate
           pip install -r requirements.txt
 
-      # 6. Run tests using pytest
       - name: Run tests
         run: |
           source .venv/bin/activate
           PYTHONPATH=$(pwd) pytest tests/test_api.py > result.log
 
-      # 7. Upload result as artifact
       - name: Upload result as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: test-result
+          name: test result
           path: result.log
