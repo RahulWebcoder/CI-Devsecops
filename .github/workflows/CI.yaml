@@ -45,3 +45,9 @@ jobs:
         run: |
           source .venv/bin/activate  # Ensure virtual environment is active
           PYTHONPATH=$(pwd) pytest tests/test_api.py > result.log # Run the tests
+      
+      - name: upload result as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: test result
+          path: result.log
